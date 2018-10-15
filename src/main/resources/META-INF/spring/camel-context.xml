@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Configures the Camel Context-->
+
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="
+       http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd">
+
+  <camelContext xmlns="http://camel.apache.org/schema/spring">
+    <!-- here is a sample which processes the input files
+         (leaving them in place - see the 'noop' flag)
+         then performs content based routing on the message using XPath -->
+    <dataFormats>
+      <json id="json" library="Jackson" include="NON_NULL"/>
+      <xmljson id="xmljsonWithOptions"
+             forceTopLevelObject="true"
+             trimSpaces="true"
+             rootName="newRoot"
+             skipNamespaces="true"
+             removeNamespacePrefixes="true"
+             expandableProperties="d e"/>
+    </dataFormats>
+    <restConfiguration component="restlet"
+                       host="localhost" port="8080"/>
+    <rest path="/customers">
+        <get>
+            <to uri="direct:exampleBody"/>
+        </get>
+         <post>
+            <to uri="direct:exampleBody"/>
+        </post>
+   </rest>
+
+    <route>
+      <from uri="direct:exampleBody"/>
+      <setHeader headerName="Content-Type"><simple>application/json</simple></setHeader>
+      <!--
+      <setBody><simple trim="false">{"some_key":"random value"}</simple></setBody> 
+      -->
+      <unmarshal ref="json"/>
+      <log message="map body: ${body['zip']}"/>
+      <!--
+      <marshal ref="json"/>
+      <log message="json body: ${body.some_key}"/>
+      -->
+      <to uri="freemarker:file:templates/soap.ftl"/>
+      <removeHeaders pattern="*"/>
+      <setHeader headerName="Accept-Encoding"><simple>gzip,deflate</simple></setHeader>
+      <setHeader headerName="Content-Type"><simple>text/xml;charset=UTF-8</simple></setHeader>
+      <setHeader headerName="SOAPAction"><simple>"https://graphical.weather.gov/xml/DWMLgen/wsdl/ndfdXML.wsdl#LatLonListZipCode"</simple></setHeader>
+      <setHeader headerName="Content-Length"><simple>516</simple></setHeader>
+      <setHeader headerName="Connection"><simple>Keep-Alive</simple></setHeader>
+      <setHeader headerName="User-Agent"><simple>Paw/3.1.5 (Macintosh; OS X/10.13.6) GCDHTTPRequest</simple></setHeader>
+      <to uri="https4://graphical.weather.gov:443/xml/SOAP_server/ndfdXMLserver.php?bridgeEndpoint=true"/>
+      <removeHeaders pattern="*"/>
+      <marshal ref="xmljsonWithOptions"/>
+      <setHeader headerName="Content-Type"><simple>application/json</simple></setHeader>
+   </route>
+   <route>
+      <from uri="direct:set-headersSOAP"/>
+   </route>
+
+    <route>
+      <from uri="file:src/data?noop=true"/>
+      <choice>
+        <when>
+          <xpath>/person/city = 'London'</xpath>
+          <log message="UK message"/>
+          <to uri="file:target/messages/uk"/>
+        </when>
+        <otherwise>
+          <log message="Other message"/>
+          <to uri="file:target/messages/others"/>
+        </otherwise>
+      </choice>
+    </route>
+  </camelContext>
+
+</beans>
